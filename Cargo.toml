@@ -8,11 +8,7 @@ version = "0.1.0"
 edition = "2024"
 readme = "README.md"
 keywords = ["rainmeter", "plugin", "ffi"]
-categories = [
-    "development::libraries",
-    "development::tools",
-    "user-interface::widgets",
-]
+categories = ["development-tools::ffi", "api-bindings", "os::windows-apis"]
 
 [dependencies]
 tao = "0.34.0"
