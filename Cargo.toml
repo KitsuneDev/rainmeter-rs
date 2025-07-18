@@ -1,8 +1,18 @@
 [package]
 name = "rainmeter"
+description = "A safe, high-level Rust wrapper around Rainmeter's C/C++ plugin API."
+homepage = "https://github.com/KitsuneDev/rainmeter-rs"
+repository = "https://github.com/KitsuneDev/rainmeter-rs"
+license = "LGPL-3.0-or-later"
 version = "0.1.0"
 edition = "2024"
-
+readme = "README.md"
+keywords = ["rainmeter", "plugin", "ffi"]
+categories = [
+    "development::libraries",
+    "development::tools",
+    "user-interface::widgets",
+]
 
 [dependencies]
 tao = "0.34.0"

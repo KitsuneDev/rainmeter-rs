@@ -1,10 +1,58 @@
-//! High-level Rust interface to the Rainmeter C/C++ plugin API.
-//! Simply implement the `RainmeterPlugin` trait in your plugin,
-//! and use the `declare_plugin!` macro to expose it to Rainmeter.
-//! Don't forget to add to your `Cargo.toml`:
+//! # Rainmeter Rust Plugin Interface
+//!
+//! A (probably)-safe, high-level Rust wrapper around Rainmeter’s C/C++ plugin API.
+//! (I don't write too much Rust, so this is a work in progress. Don't judge me too harshly, please!)
+//!
+//! Please note this is platform-specific to Windows, as Rainmeter is a Windows-only application.
+//!
+//! **For more information, please refer to the [Rainmeter C++ API Overview](https://docs.rainmeter.net/developers/plugin/cpp/) (for the implementable functions) and the [Rainmeter C++ API Reference](https://docs.rainmeter.net/developers/plugin/cpp/api/) (Which is accessed via the `RainmeterContext` arguments).**
+//!
+//! ## Features
+//!
+//! - Write your Rainmeter plugins in idiomatic Rust, with traits!!
+//! - Ergonomic Rust methods for reading measure options (`ReadString`, `ReadFormula`, etc.)
+//! - Typed getters for skin data (`measure name`, `skin path`, `HWND`, etc.)
+//! - Safe logging and panic-handling in your plugin entry points
+//! - Simple `RainmeterPlugin` trait and `declare_plugin!` macro to expose plugins
+//!
+//!
+//! ## Installation
+//!
+//! Add this crate to your `Cargo.toml`:
+//!
 //! ```toml
+//! [dependencies]
+//! rainmeter = "0.1"
+//!
 //! [lib]
-//! crate-type = ["cdylib"]```
+//! crate-type = ["cdylib"]
+//! ```
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use rainmeter::{RainmeterContext, RainmeterPlugin, RmLogLevel, declare_plugin};
+//!
+//! #[derive(Default)]
+//! struct MyPlugin;
+//!
+//! impl RainmeterPlugin for MyPlugin {
+//!     fn initialize(&mut self, rm: RainmeterContext) {
+//!         let val = rm.read_double("Value", 1.0);
+//!         rm.log(RmLogLevel::LogNotice, &format!("Value = {}", val));
+//!     }
+//!
+//!     fn reload(&mut self, rm: RainmeterContext, _max: &mut f64) {}
+//!     fn update(&mut self, _rm: RainmeterContext) -> f64 { 0.0 }
+//!     fn finalize(&mut self, _rm: RainmeterContext) {}
+//!     fn get_string(&mut self, _rm: RainmeterContext) -> Option<String> { // Optional
+//!         None
+//!     }
+//!     fn execute_bang(&mut self, _rm: RainmeterContext, _args: &str) {} // Optional
+//! }
+//!
+//! declare_plugin!(crate::MyPlugin);
+//! ```
 
 use std::ffi::{OsStr, c_void};
 use std::os::windows::ffi::OsStrExt;
@@ -70,14 +118,16 @@ fn to_pcwstr(s: &str) -> PCWSTR {
 }
 
 unsafe fn from_pcwstr(ptr: PCWSTR) -> String {
-    if ptr.is_null() {
-        return String::new();
+    unsafe {
+        if ptr.is_null() {
+            return String::new();
+        }
+        let mut len = 0;
+        while *ptr.0.add(len) != 0 {
+            len += 1;
+        }
+        String::from_utf16_lossy(std::slice::from_raw_parts(ptr.0, len))
     }
-    let mut len = 0;
-    while *ptr.0.add(len) != 0 {
-        len += 1;
-    }
-    String::from_utf16_lossy(std::slice::from_raw_parts(ptr.0, len))
 }
 
 /// Log levels matching Rainmeter's LOG_* constants
@@ -98,8 +148,11 @@ pub enum RmGetType {
 }
 
 // -----------------------------------------------------------------------
-// High‑level Rust wrapper around the raw Rainmeter context pointer.
+// RainmeterContext: safe wrapper around the raw `rm` pointer
 // -----------------------------------------------------------------------
+
+/// Provides high-level methods to read options, execute bangs, retrieve
+/// skin/measure metadata, and log messages.
 
 pub struct RainmeterContext {
     raw: *mut c_void,
@@ -248,7 +301,7 @@ impl Clone for RainmeterContext {
     }
 }
 
-/// Trait every Rust‑native plugin should implement.
+/// Trait to implement for your plugin. Defines the six Rainmeter entry points.
 pub trait RainmeterPlugin: Default + 'static {
     fn initialize(&mut self, rm: RainmeterContext);
     fn reload(&mut self, rm: RainmeterContext, max_value: &mut f64);
@@ -262,6 +315,11 @@ pub trait RainmeterPlugin: Default + 'static {
 
 /// Glue macro to expose your Rust `RainmeterPlugin` implementation
 /// as the six C ABI entry points Rainmeter expects.
+/// This macro should be used in the root of your crate (e.g., `src/lib.rs`).
+/// It wraps the plugin in a module (`plugin_entry`) to avoid polluting the parent namespace, and provides the necessary FFI functions that Rainmeter will call.
+/// All functions are wrapped in `catch_unwind` to handle panics gracefully, logging them via the Rainmeter API.
+/// The plugin type must implement the `RainmeterPlugin` trait and be `Default`.
+
 #[macro_export]
 macro_rules! declare_plugin {
     ($plugin:ty) => {

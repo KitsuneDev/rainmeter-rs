@@ -1,0 +1,2 @@
+[workspace]
+allow_dirty = true # check seems weird with the sdk submodule
