@@ -54,59 +54,11 @@
 //! declare_plugin!(crate::MyPlugin);
 //! ```
 
+use rainmeter_sys::*;
 use std::ffi::{OsStr, c_void};
 use std::os::windows::ffi::OsStrExt;
 use windows::Win32::Foundation::HWND;
 use windows::core::{BOOL, PCWSTR};
-
-// -----------------------------------------------------------------------
-// FFI declarations of host‑provided Rainmeter API functions
-//    See https://docs.rainmeter.net/developers/plugin/cpp/api/
-// -----------------------------------------------------------------------
-#[link(name = "Rainmeter")]
-unsafe extern "system" {
-    pub fn RmReadString(
-        rm: *mut c_void,
-        option: PCWSTR,
-        def_value: PCWSTR,
-        replace_measures: BOOL,
-    ) -> PCWSTR;
-
-    pub fn RmReadStringFromSection(
-        rm: *mut c_void,
-        section: PCWSTR,
-        option: PCWSTR,
-        def_value: PCWSTR,
-        replace_measures: BOOL,
-    ) -> PCWSTR;
-
-    pub fn RmReadFormula(rm: *mut c_void, option: PCWSTR, def_value: f64) -> f64;
-
-    pub fn RmReadFormulaFromSection(
-        rm: *mut c_void,
-        section: PCWSTR,
-        option: PCWSTR,
-        def_value: f64,
-    ) -> f64;
-
-    pub fn RmReplaceVariables(rm: *mut c_void, str: PCWSTR) -> PCWSTR;
-
-    pub fn RmPathToAbsolute(rm: *mut c_void, relative_path: PCWSTR) -> PCWSTR;
-
-    pub fn RmExecute(skin: *mut c_void, command: PCWSTR);
-
-    pub fn RmGet(rm: *mut c_void, what: i32) -> *mut c_void;
-
-    pub fn RmLog(rm: *mut c_void, level: i32, message: PCWSTR);
-}
-
-// Additional cdecl APIs for formatted and deprecated logging
-#[link(name = "Rainmeter")]
-unsafe extern "C" {
-    pub fn RmLogF(rm: *mut c_void, level: i32, format: PCWSTR, ...);
-    pub fn LSLog(level: i32, unused: PCWSTR, message: PCWSTR) -> BOOL;
-}
-
 // -----------------------------------------------------------------------
 // Helpers: wide‑string conversion
 // -----------------------------------------------------------------------
@@ -168,27 +120,33 @@ impl RainmeterContext {
     pub fn read_string(&self, key: &str, default: &str) -> String {
         let k = to_pcwstr(key);
         let d = to_pcwstr(default);
-        let ptr = unsafe { RmReadString(self.raw, k, d, BOOL(1)) };
-        unsafe { from_pcwstr(ptr) }
+        // FFI expects *const u16, and replaceMeasures as a plain i32
+        let raw_ptr = unsafe {
+            RmReadString(
+                self.raw, k.0, d.0, 1, // TRUE
+            )
+        };
+        // Wrap it back so our from_pcwstr() still works
+        unsafe { from_pcwstr(PCWSTR(raw_ptr)) }
     }
 
     pub fn read_string_section(&self, section: &str, key: &str, default: &str) -> String {
         let s = to_pcwstr(section);
         let k = to_pcwstr(key);
         let d = to_pcwstr(default);
-        let ptr = unsafe { RmReadStringFromSection(self.raw, s, k, d, BOOL(1)) };
-        unsafe { from_pcwstr(ptr) }
+        let raw_ptr = unsafe { RmReadStringFromSection(self.raw, s.0, k.0, d.0, 1) };
+        unsafe { from_pcwstr(PCWSTR(raw_ptr)) }
     }
 
     pub fn read_formula(&self, key: &str, default: f64) -> f64 {
         let k = to_pcwstr(key);
-        unsafe { RmReadFormula(self.raw, k, default) }
+        unsafe { RmReadFormula(self.raw, k.0, default) }
     }
 
     pub fn read_formula_section(&self, section: &str, key: &str, default: f64) -> f64 {
         let s = to_pcwstr(section);
         let k = to_pcwstr(key);
-        unsafe { RmReadFormulaFromSection(self.raw, s, k, default) }
+        unsafe { RmReadFormulaFromSection(self.raw, s.0, k.0, default) }
     }
 
     pub fn read_int(&self, key: &str, default: i32) -> i32 {
@@ -209,14 +167,14 @@ impl RainmeterContext {
 
     pub fn replace_variables(&self, input: &str) -> String {
         let i = to_pcwstr(input);
-        let ptr = unsafe { RmReplaceVariables(self.raw, i) };
-        unsafe { from_pcwstr(ptr) }
+        let raw_ptr = unsafe { RmReplaceVariables(self.raw, i.0) };
+        unsafe { from_pcwstr(PCWSTR(raw_ptr)) }
     }
-
+    /// No, Minthara... I am busy right now.
     pub fn path_to_absolute(&self, relative: &str) -> String {
         let r = to_pcwstr(relative);
-        let ptr = unsafe { RmPathToAbsolute(self.raw, r) };
-        unsafe { from_pcwstr(ptr) }
+        let raw_ptr = unsafe { RmPathToAbsolute(self.raw, r.0) };
+        unsafe { from_pcwstr(PCWSTR(raw_ptr)) }
     }
 
     pub fn read_path(&self, key: &str, default: &str) -> String {
@@ -226,7 +184,7 @@ impl RainmeterContext {
 
     pub fn execute(&self, command: &str) {
         let c = to_pcwstr(command);
-        unsafe { RmExecute(self.raw, c) };
+        unsafe { RmExecute(self.raw, c.0) };
     }
 
     /// Raw RmGet with integer code
@@ -289,7 +247,7 @@ impl RainmeterContext {
 
     pub fn log(&self, level: RmLogLevel, message: &str) {
         let m = to_pcwstr(message);
-        unsafe { RmLog(self.raw, level as i32, m) };
+        unsafe { RmLog(self.raw, level as i32, m.0) };
     }
 }
 
@@ -306,10 +264,10 @@ pub trait RainmeterPlugin: Default + 'static {
     fn initialize(&mut self, rm: RainmeterContext);
     fn reload(&mut self, rm: RainmeterContext, max_value: &mut f64);
     fn update(&mut self, rm: RainmeterContext) -> f64;
-    fn get_string(&mut self, rm: RainmeterContext) -> Option<String> {
+    fn get_string(&mut self, _rm: RainmeterContext) -> Option<String> {
         None
     }
-    fn execute_bang(&mut self, rm: RainmeterContext, args: &str) {}
+    fn execute_bang(&mut self, _rm: RainmeterContext, _args: &str) {}
     fn finalize(&mut self, rm: RainmeterContext);
 }
 
