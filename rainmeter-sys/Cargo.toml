@@ -1,6 +1,6 @@
 [package]
 name = "rainmeter-sys"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Low-Level Rainmeter FFI Bindings"
 homepage = "https://github.com/KitsuneDev/rainmeter-rs"
