@@ -184,7 +184,7 @@ impl RainmeterContext {
 
     pub fn execute(&self, command: &str) {
         let c = to_pcwstr(command);
-        unsafe { RmExecute(self.raw, c.0) };
+        unsafe { RmExecute(self.get_skin(), c.0) };
     }
 
     /// Raw RmGet with integer code
